@@ -190,4 +190,42 @@ TEST_F(PipelineReadBufferTest, NarrowingReadUntilAfterBufferingTrims)
     EXPECT_EQ(total, 200u);
 }
 
+TEST_F(PipelineReadBufferTest, ExtendReadUntilAfterTrimContinues)
+{
+    /// Narrow the bound into a buffered block, drain to it, then widen the bound
+    /// and continue: the bytes after the old bound must follow with nothing
+    /// skipped.
+    auto buf = makeBuffer({makeFile("a.bin", 1024)}, /*block_size=*/256);
+
+    char head[128];
+    buf->readStrict(head, sizeof(head));            // [0, 128)
+
+    buf->setReadUntilPosition(200);
+    size_t mid = 0;
+    while (true)
+    {
+        char tmp[64];
+        size_t got = buf->read(tmp, sizeof(tmp));
+        if (got == 0)
+            break;
+        mid += got;
+    }
+    EXPECT_EQ(mid, 72u);                             // [128, 200)
+
+    buf->setReadUntilEnd();
+    std::vector<char> rest;
+    while (true)
+    {
+        char tmp[256];
+        size_t got = buf->read(tmp, sizeof(tmp));
+        if (got == 0)
+            break;
+        rest.insert(rest.end(), tmp, tmp + got);
+    }
+
+    ASSERT_EQ(rest.size(), 1024u - 200u);            // [200, 1024)
+    for (size_t i = 0; i < rest.size(); ++i)
+        ASSERT_EQ(static_cast<unsigned char>(rest[i]), patternByte(200 + i)) << "at logical " << (200 + i);
+}
+
 }

@@ -93,14 +93,16 @@ void PipelineReadBuffer::setReadUntilPosition(size_t position)
 {
     executor->setReadUntil(position);
 
-    /// Trim bytes already exposed past the new bound, so a caller that narrows
-    /// the bound after the buffer was filled can't read beyond it.
+    /// If the new bound is below what's already buffered, drop the buffer and
+    /// re-anchor the executor at the exposed position. Otherwise the executor
+    /// stays at the end of the already-read chunk, and a later bound extension
+    /// would resume there, skipping the bytes in between.
     if (position < read_position)
     {
         const size_t current = read_position - available();
-        const size_t keep = position > current ? position - current : 0;
-        working_buffer.resize(static_cast<size_t>(pos - working_buffer.begin()) + keep);
-        read_position = current + keep;
+        resetWorkingBuffer();
+        executor->seek(current);
+        read_position = current;
     }
 }
 
