@@ -1,14 +1,7 @@
--- Tags: no-object-storage
--- The activation check below asserts the executor path was taken. On
--- object-storage storage policies the data is on S3, where DiskObjectStorage
--- reads use the threadpool async prefetch stage and the executor falls back, so
--- the assertion only holds on local disk (object-storage routing is covered by
--- the ReadPipelineExecutorTest gtest).
---
--- Basic smoke test for the experimental ReaderExecutor read path.
--- Reads a local MergeTree table with `use_reader_executor = 1`, checks the data
--- comes back correct (full scan, point lookup, range, string column), and proves
--- the executor path was actually taken via `system.text_log`.
+-- Smoke test for the experimental ReaderExecutor read path. Reads a MergeTree
+-- table with `use_reader_executor = 1`, checks the data comes back correct (full
+-- scan, point lookup, range, string column), and proves the executor path was
+-- taken via `system.text_log` — on local disk and on object storage.
 
 DROP TABLE IF EXISTS t_reader_executor;
 
@@ -28,6 +21,12 @@ SELECT number, number * 2, concat('row_', toString(number))
 FROM numbers(300000);
 
 SET use_reader_executor = 1;
+-- The executor falls back when a stage it does not implement is configured. On
+-- object-storage policies the `threadpool` method adds an async-prefetch stage
+-- and the disk cache adds a cache stage; disable both so the executor actually
+-- runs (on local disk these are no-ops).
+SET remote_filesystem_read_method = 'read';
+SET enable_filesystem_cache = 0;
 
 -- Full scan over numeric columns. The `log_comment` marks this query so the
 -- activation check below can find it in the logs by its query id.
